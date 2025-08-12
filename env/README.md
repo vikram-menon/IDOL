@@ -35,7 +35,7 @@ bash scripts/fetch_template.sh
 
 ### 3. Download Pretrained Models and caches with:
 ```bash
-bash env/download_files.sh      # download pretrained models
+bash scripts/download_files.sh      # download pretrained models
 ```
 
 Or mannually download the following models from HuggingFace:
