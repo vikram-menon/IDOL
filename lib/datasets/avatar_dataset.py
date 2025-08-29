@@ -297,7 +297,7 @@ class AvatarDataset(Dataset):
             if self.if_include_video_ref_img and input_is_video:
                 # 设置一个随机数，如果小于某个概率，那么替换第一张图为另一个图片
                 if np.random.rand() < self.prob_include_video_ref_img:
-                    if 'ref' in scene:
+                    if 'image_ref' in scene:
                         ref_image_path = scene['image_ref']
                         print("ref_image_path",ref_image_path)
                     else:
@@ -358,9 +358,9 @@ class AvatarDataset(Dataset):
                             cond_smpl_param_ref =  torch.Tensor(smpl_param_ref).reshape(-1)      # 189, combines 
                             if_use_smpl_param_ref = torch.Tensor([1])  # use the smpl_param_ref
 
-                            # overwrite some datas
-                            cond_imgs[0] = img
-                            cond_img_paths[0] = ref_image_path
+                        # overwrite some datas
+                        cond_imgs[0] = img
+                        cond_img_paths[0] = ref_image_path
 
                     except (FileNotFoundError, json.JSONDecodeError, KeyError, Exception) as e:
                         # 记录错误信息到日志文件
