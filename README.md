@@ -72,6 +72,12 @@ python run_demo.py --render_mode novel_pose
 python run_demo.py --render_mode novel_pose_A
 ```
 
+### Colab (Upload Image -> Export GLB)
+
+For a Colab-ready inference flow with image upload and `avatar.glb` export, see:
+
+- [colab/README.md](colab/README.md)
+
 ### Training
 
 #### Data Preparation

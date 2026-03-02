@@ -2,17 +2,18 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 # os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 import argparse
+import json
+from pathlib import Path
+
 import torch
 from tqdm import tqdm
-from torchvision.transforms import v2
 from pytorch_lightning import seed_everything
 from omegaconf import OmegaConf
-from tqdm import tqdm
 from einops import rearrange
 from lib.utils.infer_util import *
 from lib.utils.train_util import instantiate_from_config
 import torchvision
-import json
+
 ###############################################################################
 # Arguments.
 ###############################################################################
@@ -20,9 +21,12 @@ import json
 def parse_args():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config', type=str, help='Path to config file.', required=False)
-    parser.add_argument('--input_path', type=str, help='Path to input image or directory.', required=False)
-    parser.add_argument('--resume_path', type=str, help='Path to saved ckpt.', required=False)
+    parser.add_argument('--config', type=str, default='configs/idol_v0.yaml', help='Path to config file.')
+    parser.add_argument('--input_path', type=str, default='work_dirs/demo_data/4.jpg', help='Path to input image or directory.')
+    parser.add_argument('--input_path_smpl', type=str, default='work_dirs/demo_data/4.json', help='Path to SMPL-X reference json.')
+    parser.add_argument('--driven_smplx_path', type=str, default='work_dirs/demo_data/Ways_to_Catch_360_clip1.json', help='Path to driving SMPL-X sequence (.json/.npy).')
+    parser.add_argument('--resume_path', type=str, default='work_dirs/ckpt/model.ckpt', help='Path to saved ckpt.')
+    parser.add_argument('--sapiens_ckpt', type=str, default=None, help='Optional override for sapiens torchscript checkpoint.')
     parser.add_argument('--output_path', type=str, default='outputs/', help='Output directory.')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for sampling.')
     parser.add_argument('--distance', type=float, default=1.5, help='Render distance.')
@@ -73,9 +77,11 @@ def process_data_on_gpu(args, model, gpu_id, img_paths_list, smplx_ref_path_list
         ###############################################################################
   
         ''' # Stage 1.1: SMPLX loading (Beta)'''
-        if args.input_path_smpl is not None:
+        smplx = {'betas': [0.0] * 10}
+        if args.input_path_smpl is not None and os.path.exists(args.input_path_smpl):
             # smplx = np.load(args.input_path_smpl, allow_pickle=True).item()
-            smplx = json.load(open(args.input_path_smpl))
+            with open(args.input_path_smpl, "r", encoding="utf-8") as f:
+                smplx = json.load(f)
             if "shapes" in smplx.keys():
                 smplx['betas'] = smplx['shapes']
             else:
@@ -140,7 +146,7 @@ def process_data_on_gpu(args, model, gpu_id, img_paths_list, smplx_ref_path_list
             raise NotImplementedError(f"Render mode '{render_mode}' is not supported.")
 
         '''# Stage 1.3: Image loading '''
-        image = load_image(args.input_path, args.output_folders['ref'])
+        image = load_image(args.input_path, args.output_folders['ref'], no_rembg=args.no_rembg)
         H,W = 896,640
         image_bs = image.unsqueeze(0).to(device)
         num_imgs = 180
@@ -249,11 +255,18 @@ def main():
     """Main execution function"""
     # Parse arguments and set random seed
     args = parse_args()
+    seed_everything(args.seed)
 
-    args.config = "configs/idol_v0.yaml"
-    args.resume_path = "work_dirs/ckpt/model.ckpt"
+    if not os.path.exists(args.config):
+        raise FileNotFoundError(f"Config not found: {args.config}")
+    if not os.path.exists(args.resume_path):
+        raise FileNotFoundError(f"Checkpoint not found: {args.resume_path}")
+    if not os.path.exists(args.input_path):
+        raise FileNotFoundError(f"Input path not found: {args.input_path}")
 
     config = OmegaConf.load(args.config)
+    if args.sapiens_ckpt is not None:
+        config.model.params.encoder.params.model_path = args.sapiens_ckpt
     config_name = os.path.basename(args.config).replace('.yaml', '')
     model_config = config.model
 
@@ -266,10 +279,18 @@ def main():
     model = model.eval()
 
     # Setup input paths
-    img_paths_list = ['work_dirs/demo_data/4.jpg']
-    smplx_ref_path_list = ['work_dirs/demo_data/4.json']
-    smplx_path_driven_list = ['work_dirs/demo_data/Ways_to_Catch_360_clip1.json']  
-    # smplx_path_driven_list = ['work_dirs/demo_data/finedance-5-144.npy.npy']  
+    if os.path.isdir(args.input_path):
+        valid_ext = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+        img_paths_list = sorted(
+            [str(p) for p in Path(args.input_path).iterdir() if p.suffix.lower() in valid_ext]
+        )
+        if len(img_paths_list) == 0:
+            raise ValueError(f"No supported image files found in directory: {args.input_path}")
+    else:
+        img_paths_list = [args.input_path]
+
+    smplx_ref_path_list = [args.input_path_smpl] * len(img_paths_list)
+    smplx_path_driven_list = [args.driven_smplx_path] * len(img_paths_list)
 
     # Setup output directories
     # args.output_path = "./test/"

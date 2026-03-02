@@ -141,10 +141,9 @@ def load_smplify_json(smplx_smplify_path):
 
     return RT, intri, torch.Tensor(smpl_param_ref).reshape(-1)  # Return transformation, intrinsic, and SMPL parameters
 
-def load_image(input_path, output_folder, image_frame_ratio=None):
+def load_image(input_path, output_folder, image_frame_ratio=None, no_rembg=False):
     input_img_path = Path(input_path)
 
-    vids = []
     save_path = os.path.join(output_folder, f"{input_img_path.name}")
     print(f"Processing: {save_path}")
     image = Image.open(input_img_path)
@@ -152,8 +151,11 @@ def load_image(input_path, output_folder, image_frame_ratio=None):
     if image.mode == "RGBA":
         pass
     else:
-        # remove bg
-        image = remove(image.convert("RGBA"), alpha_matting=True)
+        image = image.convert("RGBA")
+
+    if not no_rembg and image.mode == "RGBA":
+        # remove bg unless explicitly disabled
+        image = remove(image, alpha_matting=True)
 
     # resize object in frame
     image_arr = np.array(image)
