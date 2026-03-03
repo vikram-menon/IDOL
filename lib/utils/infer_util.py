@@ -1,6 +1,5 @@
 import os
 import imageio
-import rembg
 import torch
 import numpy as np
 import PIL.Image
@@ -10,7 +9,6 @@ import json
 
 from pathlib import Path
 from torchvision.transforms import ToTensor
-from rembg import remove  # For background removal
 from pytorch3d.transforms import axis_angle_to_matrix, matrix_to_axis_angle
 from lib.models.deformers.smplx.lbs import batch_rodrigues
 import cv2
@@ -154,8 +152,13 @@ def load_image(input_path, output_folder, image_frame_ratio=None, no_rembg=False
         image = image.convert("RGBA")
 
     if not no_rembg and image.mode == "RGBA":
-        # remove bg unless explicitly disabled
-        image = remove(image, alpha_matting=True)
+        # Lazy import to avoid hard failure when rembg/cupy is unavailable.
+        try:
+            from rembg import remove
+
+            image = remove(image, alpha_matting=True)
+        except Exception as exc:
+            print(f"[WARN] Background removal unavailable ({exc}); continuing without rembg.")
 
     # resize object in frame
     image_arr = np.array(image)
@@ -394,7 +397,11 @@ def remove_background(image: PIL.Image.Image,
         do_remove = False
     do_remove = do_remove or force
     if do_remove:
-        image = rembg.remove(image, session=rembg_session, **rembg_kwargs)
+        try:
+            from rembg import remove
+            image = remove(image, session=rembg_session, **rembg_kwargs)
+        except Exception as exc:
+            print(f"[WARN] Background removal unavailable ({exc}); returning original image.")
     return image
 
 

@@ -18,19 +18,28 @@ python3 -m pip install \
 
 python3 -m pip install \
   pytorch-lightning==2.3.1 \
+  torchmetrics==1.8.2 \
   omegaconf==2.3.0 \
   einops==0.8.0 \
+  timm==0.9.16 \
+  transformers==4.40.1 \
   numpy==1.26.4 \
   scipy==1.13.1 \
   imageio \
   pillow==10.3.0 \
-  rembg==2.0.57 \
   opencv-python-headless==4.9.0.80 \
   trimesh==4.4.9 \
   pygltflib==1.16.2 \
   "open3d==${OPEN3D_VERSION}" \
   av \
   tqdm
+
+# Optional: background-removal dependency chain can be fragile on Python 3.12.
+if [ "${INSTALL_REMBG:-0}" = "1" ]; then
+  python3 -m pip install rembg==2.0.57
+else
+  echo "[INFO] Skipping rembg install (set INSTALL_REMBG=1 to enable)."
+fi
 
 mkdir -p submodule
 pushd submodule >/dev/null
@@ -64,5 +73,7 @@ popd >/dev/null
 
 # Build local Fast-SNARF CUDA extension modules.
 python3 -m pip install --no-build-isolation .
+
+python3 scripts/verify_colab_env.py
 
 echo "Colab inference environment setup completed."

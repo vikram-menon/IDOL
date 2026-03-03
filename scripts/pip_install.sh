@@ -40,7 +40,7 @@ pip_packages=(
     "tensorboard"
 )
 
-Install pip packages in bulk
+# Install pip packages in bulk
 for package in "${pip_packages[@]}"
 do
     pip install "$package"
