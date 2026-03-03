@@ -1,12 +1,16 @@
 import importlib
 
-import os
 
-from pytorch_lightning.utilities import rank_zero_only
+try:
+    from pytorch_lightning.utilities import rank_zero_only
+except Exception:
+    def rank_zero_only(fn):
+        return fn
+
+
 @rank_zero_only
 def main_print(*args):
     print(*args)
-
 
 
 def count_params(model, verbose=False):

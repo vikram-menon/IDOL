@@ -1,13 +1,23 @@
 import argparse
 import json
 import os
+import random
+import sys
 
+import numpy as np
 import torch
 import torchvision
 import trimesh
 from einops import rearrange
 from omegaconf import OmegaConf
-from pytorch_lightning import seed_everything
+
+# Colab Python 3.12 can pick Debian's stale dist-packages first, which breaks
+# pytorch_lightning imports through an outdated pkg_resources.
+DIST_PACKAGES = "/usr/lib/python3/dist-packages"
+if DIST_PACKAGES in sys.path:
+    sys.path.remove(DIST_PACKAGES)
+sys.modules.pop("pkg_resources", None)
+
 from tqdm import tqdm
 
 from lib.utils.glb_export import export_avatar_glb
@@ -22,6 +32,13 @@ from lib.utils.infer_util import (
     save_video,
 )
 from lib.utils.train_util import instantiate_from_config
+
+def seed_everything(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def parse_args():
