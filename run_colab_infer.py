@@ -21,7 +21,7 @@ sys.modules.pop("pkg_resources", None)
 
 from tqdm import tqdm
 
-from lib.utils.glb_export import export_avatar_glb
+from lib.utils.glb_export import export_avatar_glb, export_avatar_ply
 from lib.utils.infer_util import (
     add_root_rotate_to_smplx,
     construct_camera,
@@ -94,10 +94,49 @@ def parse_args():
         help="Export avatar GLB.",
     )
     parser.add_argument(
+        "--export_npz",
+        dest="export_npz",
+        action="store_true",
+        default=True,
+        help="Export lossless Gaussian arrays (xyz/rgb/sigma) as NPZ.",
+    )
+    parser.add_argument(
+        "--no_export_npz",
+        dest="export_npz",
+        action="store_false",
+        help="Disable NPZ export.",
+    )
+    parser.add_argument(
         "--no_export_glb",
         dest="export_glb",
         action="store_false",
         help="Disable GLB export.",
+    )
+    parser.add_argument(
+        "--export_ply",
+        dest="export_ply",
+        action="store_true",
+        default=True,
+        help="Export avatar point cloud PLY (no meshing).",
+    )
+    parser.add_argument(
+        "--no_export_ply",
+        dest="export_ply",
+        action="store_false",
+        help="Disable PLY export.",
+    )
+    parser.add_argument(
+        "--ply_gs_max_points",
+        type=int,
+        default=300000,
+        help="Max points for Gaussian-splat PLY (keeps viewer memory stable).",
+    )
+    parser.add_argument(
+        "--no_export_ply_rgb",
+        dest="export_ply_rgb",
+        action="store_false",
+        default=True,
+        help="Disable companion RGB point-cloud PLY export.",
     )
     parser.add_argument(
         "--mesh_depth",
@@ -114,14 +153,14 @@ def parse_args():
     parser.add_argument(
         "--sigma_percentile",
         type=float,
-        default=5.0,
+        default=15.0,
         help="Drop points below this sigma percentile before meshing (lower keeps detail).",
     )
     parser.add_argument(
         "--density_quantile",
         type=float,
-        default=0.0,
-        help="Poisson density trimming quantile (0.0 disables trimming).",
+        default=0.01,
+        help="Poisson density trimming quantile (small >0 removes sparse artifacts).",
     )
 
     parser.add_argument(
@@ -277,11 +316,24 @@ def main():
 
     smpl_params = load_smpl_params(args, model, device)
 
-    if args.export_glb:
+    xyzs = sigmas = rgbs = radius = rot = None
+    if args.export_glb or args.export_npz or args.export_ply:
         with torch.no_grad():
-            xyzs, sigmas, rgbs, _, _, _, _ = model.decoder.extract_pcd(
+            xyzs, sigmas, rgbs, _, radius, _, rot = model.decoder.extract_pcd(
                 code, smpl_params.to(code.dtype), init=False, zeros_hands_off=True
             )
+
+    if args.export_npz:
+        npz_path = os.path.join(args.output_dir, "avatar_gaussians.npz")
+        np.savez_compressed(
+            npz_path,
+            xyzs=xyzs.detach().cpu().to(torch.float32).numpy(),
+            rgbs=rgbs.detach().cpu().to(torch.float32).numpy(),
+            sigmas=sigmas.detach().cpu().to(torch.float32).numpy(),
+        )
+        print(f"[OK] Lossless Gaussian export: {npz_path}")
+
+    if args.export_glb:
 
         glb_path = os.path.join(args.output_dir, "avatar.glb")
         stats = export_avatar_glb(
@@ -300,6 +352,24 @@ def main():
         _ = trimesh.load(glb_path, force="mesh")
         print(f"[OK] GLB exported: {glb_path}")
         print(f"[INFO] GLB stats: {stats}")
+
+    if args.export_ply:
+        ply_path = os.path.join(args.output_dir, "avatar.ply")
+        ply_stats = export_avatar_ply(
+            xyzs=xyzs,
+            rgbs=rgbs,
+            sigmas=sigmas,
+            radius=radius,
+            rot=rot,
+            output_path=ply_path,
+            max_points=args.max_points,
+            sigma_percentile=args.sigma_percentile,
+            random_seed=args.seed,
+            gs_max_points=args.ply_gs_max_points,
+            write_rgb_companion=args.export_ply_rgb,
+        )
+        print(f"[OK] PLY exported: {ply_path}")
+        print(f"[INFO] PLY stats: {ply_stats}")
 
     if args.render_preview:
         preview_mp4, preview_png = render_preview(
