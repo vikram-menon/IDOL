@@ -194,6 +194,42 @@ def parse_args():
         help="Target faces for watertight fallback decimation.",
     )
     parser.add_argument(
+        "--watertight_density_quantile",
+        type=float,
+        default=0.32,
+        help="Occupancy threshold quantile for watertight volumetric fallback.",
+    )
+    parser.add_argument(
+        "--watertight_blur_sigma",
+        type=float,
+        default=0.75,
+        help="Gaussian blur sigma for watertight volumetric fallback density.",
+    )
+    parser.add_argument(
+        "--watertight_erode_iters",
+        type=int,
+        default=1,
+        help="Binary erosion iterations after closing in watertight fallback.",
+    )
+    parser.add_argument(
+        "--watertight_margin_ratio",
+        type=float,
+        default=0.03,
+        help="Bounding-box margin ratio used for watertight volumetric grids.",
+    )
+    parser.add_argument(
+        "--watertight_hardclose_dilation",
+        type=int,
+        default=0,
+        help="Binary dilation iterations in hard-close fallback.",
+    )
+    parser.add_argument(
+        "--watertight_shrink_voxels",
+        type=float,
+        default=0.35,
+        help="Inward normal shrink amount in voxel units after watertight extraction.",
+    )
+    parser.add_argument(
         "--fail_if_non_watertight",
         dest="fail_if_non_watertight",
         action="store_true",
@@ -395,6 +431,12 @@ def main():
             watertight_close_iters=args.watertight_close_iters,
             watertight_smooth_iters=args.watertight_smooth_iters,
             watertight_target_faces=args.watertight_target_faces,
+            watertight_density_quantile=args.watertight_density_quantile,
+            watertight_blur_sigma=args.watertight_blur_sigma,
+            watertight_erode_iters=args.watertight_erode_iters,
+            watertight_margin_ratio=args.watertight_margin_ratio,
+            watertight_hardclose_dilation=args.watertight_hardclose_dilation,
+            watertight_shrink_voxels=args.watertight_shrink_voxels,
             fail_if_non_watertight=args.fail_if_non_watertight,
         )
 

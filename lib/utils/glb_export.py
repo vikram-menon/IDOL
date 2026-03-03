@@ -316,6 +316,35 @@ def _mesh_from_binary_volume(
     return trimesh.Trimesh(vertices=world.astype(np.float32), faces=faces.astype(np.int64), process=False)
 
 
+def _apply_inward_normal_shrink(
+    mesh: trimesh.Trimesh,
+    voxel_size: float,
+    shrink_voxels: float,
+    smooth_iters: int,
+    target_faces: int,
+) -> Tuple[trimesh.Trimesh, bool]:
+    """Shrink mesh inward along vertex normals, but rollback if watertightness is lost."""
+    shrink_dist = float(max(0.0, shrink_voxels)) * float(max(0.0, voxel_size))
+    if shrink_dist <= 0.0 or mesh.vertices.shape[0] == 0:
+        return mesh, False
+
+    try:
+        normals = np.asarray(mesh.vertex_normals, dtype=np.float32)
+    except Exception:
+        return mesh, False
+
+    if normals.shape != mesh.vertices.shape or not np.isfinite(normals).all():
+        return mesh, False
+
+    shrunk = mesh.copy()
+    shrunk.vertices = np.asarray(shrunk.vertices, dtype=np.float32) - normals * shrink_dist
+    shrunk = _finalize_for_glb(shrunk, smooth_iters=smooth_iters, target_faces=target_faces)
+
+    if _mesh_quality_metrics(shrunk)["watertight"]:
+        return shrunk, True
+    return mesh, False
+
+
 def _watertight_mesh_from_volume(
     points: np.ndarray,
     colors: np.ndarray,
@@ -324,29 +353,40 @@ def _watertight_mesh_from_volume(
     close_iters: int,
     smooth_iters: int,
     target_faces: int,
-) -> trimesh.Trimesh:
+    density_quantile: float,
+    blur_sigma: float,
+    erode_iters: int,
+    margin_ratio: float,
+    shrink_voxels: float,
+) -> Tuple[trimesh.Trimesh, float, bool]:
     from scipy import ndimage
 
     resolution = int(max(64, resolution))
-    pmin, pmax = _compute_bounds(points, margin_ratio=0.06)
+    pmin, pmax = _compute_bounds(points, margin_ratio=float(max(margin_ratio, 0.0)))
     idx = _points_to_indices(points, pmin, pmax, resolution)
 
     density = np.zeros((resolution, resolution, resolution), dtype=np.float32)
     weights = np.clip(sigma.astype(np.float32), 1e-3, None)
     np.add.at(density, (idx[:, 0], idx[:, 1], idx[:, 2]), weights)
 
-    blur_sigma = max(1.0, resolution / 256.0)
-    density = ndimage.gaussian_filter(density, sigma=blur_sigma, mode="nearest")
+    blur_sigma = float(max(0.0, blur_sigma))
+    if blur_sigma > 0.0:
+        density = ndimage.gaussian_filter(density, sigma=blur_sigma, mode="nearest")
     nonzero = density[density > 0]
     if nonzero.size == 0:
         raise ValueError("Volumetric fallback failed: empty density grid.")
-    threshold = float(np.quantile(nonzero, 0.20))
+    q = float(np.clip(density_quantile, 0.0, 0.99))
+    threshold = float(np.quantile(nonzero, q))
     occ = density >= threshold
     if not occ.any():
         occ = density > 0
 
     if close_iters > 0:
         occ = ndimage.binary_closing(occ, iterations=int(close_iters))
+    if erode_iters > 0:
+        occ_eroded = ndimage.binary_erosion(occ, iterations=int(erode_iters))
+        if occ_eroded.any():
+            occ = occ_eroded
     occ = ndimage.binary_fill_holes(occ)
     occ = _largest_component_mask(occ)
     if not occ.any():
@@ -354,8 +394,16 @@ def _watertight_mesh_from_volume(
 
     mesh = _mesh_from_binary_volume(occ, pmin, pmax)
     mesh = _finalize_for_glb(mesh, smooth_iters=smooth_iters, target_faces=target_faces)
+    voxel_size = float(np.mean((pmax - pmin) / max(resolution - 1, 1)))
+    mesh, shrink_applied = _apply_inward_normal_shrink(
+        mesh=mesh,
+        voxel_size=voxel_size,
+        shrink_voxels=shrink_voxels,
+        smooth_iters=smooth_iters,
+        target_faces=target_faces,
+    )
     mesh = _colorize_mesh(mesh, points, colors)
-    return mesh
+    return mesh, threshold, shrink_applied
 
 
 def _force_close_with_mesh_voxel_fill(
@@ -366,7 +414,9 @@ def _force_close_with_mesh_voxel_fill(
     close_iters: int,
     smooth_iters: int,
     target_faces: int,
-) -> trimesh.Trimesh:
+    dilation_iters: int,
+    shrink_voxels: float,
+) -> Tuple[trimesh.Trimesh, bool]:
     from scipy import ndimage
 
     resolution = int(max(64, resolution))
@@ -384,7 +434,8 @@ def _force_close_with_mesh_voxel_fill(
 
     occ = np.zeros((resolution, resolution, resolution), dtype=bool)
     occ[idx[:, 0], idx[:, 1], idx[:, 2]] = True
-    occ = ndimage.binary_dilation(occ, iterations=1)
+    if dilation_iters > 0:
+        occ = ndimage.binary_dilation(occ, iterations=int(dilation_iters))
     if close_iters > 0:
         occ = ndimage.binary_closing(occ, iterations=int(close_iters))
     occ = ndimage.binary_fill_holes(occ)
@@ -398,8 +449,16 @@ def _force_close_with_mesh_voxel_fill(
         smooth_iters=max(int(smooth_iters), 1),
         target_faces=target_faces,
     )
+    voxel_size = float(np.mean((pmax - pmin) / max(resolution - 1, 1)))
+    mesh_closed, shrink_applied = _apply_inward_normal_shrink(
+        mesh=mesh_closed,
+        voxel_size=voxel_size,
+        shrink_voxels=shrink_voxels,
+        smooth_iters=max(int(smooth_iters), 1),
+        target_faces=target_faces,
+    )
     mesh_closed = _colorize_mesh(mesh_closed, points_for_color, colors_for_color)
-    return mesh_closed
+    return mesh_closed, shrink_applied
 
 
 def export_avatar_ply(
@@ -531,8 +590,14 @@ def export_avatar_glb(
     watertight_close_iters: int = 2,
     watertight_smooth_iters: int = 5,
     watertight_target_faces: int = 200000,
+    watertight_density_quantile: float = 0.32,
+    watertight_blur_sigma: float = 0.75,
+    watertight_erode_iters: int = 1,
+    watertight_margin_ratio: float = 0.03,
+    watertight_hardclose_dilation: int = 0,
+    watertight_shrink_voxels: float = 0.35,
     fail_if_non_watertight: bool = True,
-) -> Dict[str, int]:
+) -> Dict[str, object]:
     """Export GLB mesh, with optional watertight-first pipeline for Unity."""
     if glb_mode not in {"watertight", "legacy"}:
         raise ValueError(f"Unsupported glb_mode={glb_mode}. Use 'watertight' or 'legacy'.")
@@ -558,9 +623,11 @@ def export_avatar_glb(
     mesh_tm = _colorize_mesh(mesh_tm, points_used, colors_used)
     metrics = _mesh_quality_metrics(mesh_tm)
     pipeline = "poisson"
+    vol_threshold = None
+    post_shrink_applied = False
 
     if glb_mode == "watertight" and not metrics["watertight"]:
-        mesh_tm = _watertight_mesh_from_volume(
+        mesh_tm, vol_threshold, shrink_applied = _watertight_mesh_from_volume(
             points=points,
             colors=colors,
             sigma=sigma,
@@ -568,12 +635,18 @@ def export_avatar_glb(
             close_iters=watertight_close_iters,
             smooth_iters=watertight_smooth_iters,
             target_faces=watertight_target_faces,
+            density_quantile=watertight_density_quantile,
+            blur_sigma=watertight_blur_sigma,
+            erode_iters=watertight_erode_iters,
+            margin_ratio=watertight_margin_ratio,
+            shrink_voxels=watertight_shrink_voxels,
         )
+        post_shrink_applied = post_shrink_applied or bool(shrink_applied)
         metrics = _mesh_quality_metrics(mesh_tm)
         pipeline = "volumetric_fallback"
 
     if glb_mode == "watertight" and not metrics["watertight"]:
-        mesh_tm = _force_close_with_mesh_voxel_fill(
+        mesh_tm, shrink_applied = _force_close_with_mesh_voxel_fill(
             mesh=mesh_tm,
             points_for_color=points,
             colors_for_color=colors,
@@ -581,7 +654,10 @@ def export_avatar_glb(
             close_iters=max(watertight_close_iters, 1),
             smooth_iters=watertight_smooth_iters,
             target_faces=watertight_target_faces,
+            dilation_iters=max(0, int(watertight_hardclose_dilation)),
+            shrink_voxels=watertight_shrink_voxels,
         )
+        post_shrink_applied = post_shrink_applied or bool(shrink_applied)
         metrics = _mesh_quality_metrics(mesh_tm)
         pipeline = "volumetric_fallback"
 
@@ -606,8 +682,11 @@ def export_avatar_glb(
     mesh_tm.export(output_path)
     return {
         "pipeline": pipeline,
+        "shape_profile": "balanced",
         "watertight": bool(metrics["watertight"]),
         "boundary_edges": int(metrics["boundary_edges"]),
+        "vol_threshold": (float(vol_threshold) if vol_threshold is not None else None),
+        "post_shrink_applied": bool(post_shrink_applied),
         "points_after_filter": int(points.shape[0]),
         "mesh_vertices": int(mesh_tm.vertices.shape[0]),
         "mesh_faces": int(mesh_tm.faces.shape[0]),
