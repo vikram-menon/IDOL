@@ -57,10 +57,10 @@ def export_avatar_glb(
     rgbs,
     sigmas,
     output_path: str,
-    mesh_depth: int = 8,
-    max_points: int = 120000,
-    sigma_percentile: float = 30.0,
-    density_quantile: float = 0.05,
+    mesh_depth: int = 10,
+    max_points: int = 0,
+    sigma_percentile: float = 5.0,
+    density_quantile: float = 0.0,
     random_seed: int = 42,
 ) -> Dict[str, int]:
     """Export a static, vertex-colored GLB from IDOL Gaussian points."""
@@ -118,7 +118,7 @@ def export_avatar_glb(
         pcd, depth=int(mesh_depth)
     )
     densities = np.asarray(densities)
-    if densities.size > 0:
+    if densities.size > 0 and density_quantile > 0.0:
         density_quantile = float(np.clip(density_quantile, 0.0, 0.5))
         cutoff = np.quantile(densities, density_quantile)
         mesh.remove_vertices_by_mask(densities < cutoff)

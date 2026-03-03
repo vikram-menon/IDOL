@@ -3,7 +3,10 @@ set -euo pipefail
 
 # Colab inference-only setup (GPU runtime required).
 
-python3 -m pip install --upgrade pip setuptools wheel ninja
+# Keep setuptools on a version that still ships pkg_resources, which
+# pytorch_lightning/lightning_fabric import on startup.
+python3 -m pip install --upgrade pip wheel ninja
+python3 -m pip install "setuptools==75.2.0"
 
 # open3d 0.18.0 has no Python 3.12 wheels; use 0.19.0 on 3.12+.
 OPEN3D_VERSION="0.18.0"

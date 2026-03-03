@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import pickle
 import random
 import sys
 
@@ -101,20 +102,26 @@ def parse_args():
     parser.add_argument(
         "--mesh_depth",
         type=int,
-        default=8,
-        help="Poisson depth for mesh reconstruction.",
+        default=10,
+        help="Poisson depth for mesh reconstruction (higher = more detail, slower).",
     )
     parser.add_argument(
         "--max_points",
         type=int,
-        default=120000,
-        help="Maximum points after filtering/downsampling for mesh reconstruction.",
+        default=0,
+        help="Maximum points after filtering/downsampling (0 keeps all points).",
     )
     parser.add_argument(
         "--sigma_percentile",
         type=float,
-        default=30.0,
-        help="Drop points below this sigma percentile before meshing.",
+        default=5.0,
+        help="Drop points below this sigma percentile before meshing (lower keeps detail).",
+    )
+    parser.add_argument(
+        "--density_quantile",
+        type=float,
+        default=0.0,
+        help="Poisson density trimming quantile (0.0 disables trimming).",
     )
 
     parser.add_argument(
@@ -146,6 +153,15 @@ def validate_assets(args):
             f"{smplx_neutral_path}. "
             "Please place your licensed SMPL-X file there."
         )
+    try:
+        with open(smplx_neutral_path, "rb") as f:
+            _ = pickle.load(f, encoding="latin1")
+    except Exception as exc:
+        raise RuntimeError(
+            "SMPL-X model file appears corrupted or incomplete: "
+            f"{smplx_neutral_path}. Re-download it with `bash scripts/fetch_template.sh` "
+            "and make sure `SMPLX_NEUTRAL.pkl` is copied fully."
+        ) from exc
 
     if args.smplx_json is not None and not os.path.exists(args.smplx_json):
         raise FileNotFoundError(f"SMPL-X input file not found: {args.smplx_json}")
@@ -276,6 +292,7 @@ def main():
             mesh_depth=args.mesh_depth,
             max_points=args.max_points,
             sigma_percentile=args.sigma_percentile,
+            density_quantile=args.density_quantile,
             random_seed=args.seed,
         )
 
