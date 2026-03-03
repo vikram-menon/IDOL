@@ -28,6 +28,7 @@ python3 -m pip install \
   transformers==4.40.1 \
   numpy==1.26.4 \
   scipy==1.13.1 \
+  scikit-image==0.25.2 \
   imageio \
   pillow==10.3.0 \
   opencv-python-headless==4.9.0.80 \

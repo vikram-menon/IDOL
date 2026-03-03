@@ -27,6 +27,8 @@ def main():
         "pytorch_lightning",
         "omegaconf",
         "einops",
+        "scipy",
+        "skimage",
         "timm",
         "transformers",
         "trimesh",

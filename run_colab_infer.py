@@ -162,6 +162,50 @@ def parse_args():
         default=0.01,
         help="Poisson density trimming quantile (small >0 removes sparse artifacts).",
     )
+    parser.add_argument(
+        "--glb_mode",
+        type=str,
+        choices=["watertight", "legacy"],
+        default="watertight",
+        help="GLB export mode: watertight-first or legacy poisson-first.",
+    )
+    parser.add_argument(
+        "--watertight_resolution",
+        type=int,
+        default=384,
+        help="Voxel resolution for watertight volumetric fallback.",
+    )
+    parser.add_argument(
+        "--watertight_close_iters",
+        type=int,
+        default=2,
+        help="Binary closing iterations in watertight fallback.",
+    )
+    parser.add_argument(
+        "--watertight_smooth_iters",
+        type=int,
+        default=5,
+        help="Mesh smoothing iterations in watertight fallback.",
+    )
+    parser.add_argument(
+        "--watertight_target_faces",
+        type=int,
+        default=200000,
+        help="Target faces for watertight fallback decimation.",
+    )
+    parser.add_argument(
+        "--fail_if_non_watertight",
+        dest="fail_if_non_watertight",
+        action="store_true",
+        default=True,
+        help="Fail GLB export if final mesh is not watertight.",
+    )
+    parser.add_argument(
+        "--allow_non_watertight",
+        dest="fail_if_non_watertight",
+        action="store_false",
+        help="Allow exporting GLB even if final mesh is not watertight.",
+    )
 
     parser.add_argument(
         "--render_preview",
@@ -346,6 +390,12 @@ def main():
             sigma_percentile=args.sigma_percentile,
             density_quantile=args.density_quantile,
             random_seed=args.seed,
+            glb_mode=args.glb_mode,
+            watertight_resolution=args.watertight_resolution,
+            watertight_close_iters=args.watertight_close_iters,
+            watertight_smooth_iters=args.watertight_smooth_iters,
+            watertight_target_faces=args.watertight_target_faces,
+            fail_if_non_watertight=args.fail_if_non_watertight,
         )
 
         # Sanity check that the GLB is loadable.
