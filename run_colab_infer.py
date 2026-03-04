@@ -78,6 +78,13 @@ def parse_args():
         help="Optional SMPL-X json/npy path. If omitted, uses default neutral A-pose.",
     )
     parser.add_argument(
+        "--smplx_gender",
+        type=str,
+        choices=["neutral", "male", "female"],
+        default="neutral",
+        help="SMPL-X body model gender to use for deformation.",
+    )
+    parser.add_argument(
         "--seed", type=int, default=42, help="Random seed for reproducibility."
     )
     parser.add_argument(
@@ -257,29 +264,39 @@ def parse_args():
     return parser.parse_args()
 
 
+def _smplx_model_path_for_gender(gender: str) -> str:
+    gender = str(gender).lower()
+    mapping = {
+        "neutral": "SMPLX_NEUTRAL.pkl",
+        "male": "SMPLX_MALE.pkl",
+        "female": "SMPLX_FEMALE.pkl",
+    }
+    if gender not in mapping:
+        raise ValueError(f"Unsupported SMPL-X gender: {gender}")
+    return os.path.join("lib", "models", "deformers", "smplx", "SMPLX", mapping[gender])
+
+
 def validate_assets(args):
     required = [args.input_image, args.config, args.ckpt]
     for path in required:
         if not os.path.exists(path):
             raise FileNotFoundError(f"Required file not found: {path}")
 
-    smplx_neutral_path = os.path.join(
-        "lib", "models", "deformers", "smplx", "SMPLX", "SMPLX_NEUTRAL.pkl"
-    )
-    if not os.path.exists(smplx_neutral_path):
+    smplx_model_path = _smplx_model_path_for_gender(args.smplx_gender)
+    if not os.path.exists(smplx_model_path):
         raise FileNotFoundError(
             "Missing SMPL-X model file: "
-            f"{smplx_neutral_path}. "
+            f"{smplx_model_path}. "
             "Please place your licensed SMPL-X file there."
         )
     try:
-        with open(smplx_neutral_path, "rb") as f:
+        with open(smplx_model_path, "rb") as f:
             _ = pickle.load(f, encoding="latin1")
     except Exception as exc:
         raise RuntimeError(
             "SMPL-X model file appears corrupted or incomplete: "
-            f"{smplx_neutral_path}. Re-download it with `bash scripts/fetch_template.sh` "
-            "and make sure `SMPLX_NEUTRAL.pkl` is copied fully."
+            f"{smplx_model_path}. Re-download it with `bash scripts/fetch_template.sh` "
+            "and make sure the selected SMPL-X pkl is copied fully."
         ) from exc
 
     if args.smplx_json is not None and not os.path.exists(args.smplx_json):
@@ -290,6 +307,7 @@ def load_model(args, device):
     config = OmegaConf.load(args.config)
     if args.sapiens_ckpt:
         config.model.params.encoder.params.model_path = args.sapiens_ckpt
+    config.model.params.decoder.params.gender = args.smplx_gender
 
     model = instantiate_from_config(config.model)
     model.encoder = model.encoder.to(torch.bfloat16)
@@ -376,6 +394,7 @@ def render_preview(model, code, smpl_params, output_dir: str, preview_frames: in
 def main():
     args = parse_args()
     seed_everything(args.seed)
+    print(f"[INFO] SMPL-X gender: {args.smplx_gender}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type != "cuda":

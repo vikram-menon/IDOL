@@ -107,19 +107,22 @@ class UVNDecoder_gender(nn.Module):
         if is_sub2:
             base_cache_dir = 'work_dirs/cache_sub2'
             # main_print("!!!!!!!!!!!!!!!!!!! using the sub2 uv map !!!!!!!!!!!!!!!!!!!")
-        if gender == 'neutral':
+        if gender in ('neutral', 'female'):
             select_uv = torch.as_tensor(np.load(base_cache_dir+'/init_uv_smplx_newNeutral.npy'))
             self.register_buffer('select_coord', select_uv.unsqueeze(0)*2.-1.)
 
             init_pcd = torch.as_tensor(np.load(base_cache_dir+'/init_pcd_smplx_newNeutral.npy'))
             self.register_buffer('init_pcd', init_pcd.unsqueeze(0), persistent=False) # 0.9-- -1
+            if gender == 'female':
+                main_print("[WARN] Female SMPL-X uses neutral UV/cache templates in this repo.")
         elif gender == 'male':
-            assert NotImplementedError("Haven't create the init_uv_smplx_thu in v_template")
             select_uv = torch.as_tensor(np.load(base_cache_dir+'/init_uv_smplx_thu.npy'))
             self.register_buffer('select_coord', select_uv.unsqueeze(0)*2.-1.)
 
             init_pcd = torch.as_tensor(np.load(base_cache_dir+'/init_pcd_smplx_thu.npy'))
             self.register_buffer('init_pcd', init_pcd.unsqueeze(0), persistent=False) # 0.9-- -1
+        else:
+            raise ValueError(f"Unsupported gender: {gender}")
         self.num_init = self.init_pcd.shape[1]
         main_print(f"!!!!!!!!!!!!!!!!!!! cur points number are {self.num_init} !!!!!!!!!!!!!!!!!!!")
 

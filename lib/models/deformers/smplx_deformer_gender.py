@@ -37,7 +37,7 @@ class SMPLXDeformer_gender(torch.nn.Module):
         if is_sub2:
             base_cache_dir = 'work_dirs/cache_sub2'
 
-        if gender == 'neutral':
+        if gender in ('neutral', 'female'):
             init_spdir_neutral = torch.as_tensor(np.load(base_cache_dir+'/init_spdir_smplx_thu_newNeutral.npy'))
             self.register_buffer('init_spdir', init_spdir_neutral, persistent=False)
                     
@@ -48,6 +48,8 @@ class SMPLXDeformer_gender(torch.nn.Module):
             self.register_buffer('init_lbsw', init_lbs_weights.unsqueeze(0), persistent=False)
             init_faces = torch.as_tensor(np.load(base_cache_dir+'/init_faces_smplx_newNeutral.npy'))
             self.register_buffer('init_faces', init_faces.unsqueeze(0), persistent=False)
+            if gender == 'female':
+                print("[WARN] Female SMPL-X uses neutral deformation cache templates in this repo.")
 
         elif gender == 'male':
             init_spdir_male = torch.as_tensor(np.load(base_cache_dir+'/init_spdir_smplx_thu_newMale.npy'))
@@ -61,6 +63,8 @@ class SMPLXDeformer_gender(torch.nn.Module):
         
             init_faces = torch.as_tensor(np.load(base_cache_dir+'/init_faces_smplx_neuMale.npy'))
             self.register_buffer('init_faces', init_faces.unsqueeze(0), persistent=False)
+        else:
+            raise ValueError(f"Unsupported gender: {gender}")
 
         self.initialize()
         self.initialized = True
