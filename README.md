@@ -78,6 +78,32 @@ For a Colab-ready inference flow with image upload and `avatar.glb` export, see:
 
 - [colab/README.md](colab/README.md)
 
+### Automated Unity Avatar Export (GLB -> Rigged FBX)
+
+You can now automate a Unity-ready export with one command:
+
+```bash
+python scripts/auto_unity_avatar.py \
+  --input_image /path/to/person.jpg \
+  --config configs/idol_v0.yaml \
+  --ckpt work_dirs/ckpt/model.ckpt \
+  --output_dir outputs_unity \
+  --blender_exe blender
+```
+
+This pipeline will:
+
+1. Run `run_colab_infer.py` to generate `avatar.glb` (watertight mode).
+2. Run Blender in headless mode using `scripts/blender_autorig_unity.py`.
+3. Export `outputs_unity/avatar_unity.fbx` with a basic humanoid armature.
+
+Notes:
+
+- Blender must be installed and available on `PATH` (or pass full path via `--blender_exe`).
+- The rig is heuristic and intended for automation speed. For production-quality deformation,
+  you may still want to refine weights/bone placement in Blender.
+- In Unity, import the FBX and set Rig to `Humanoid`.
+
 ### Training
 
 #### Data Preparation
